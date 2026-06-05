@@ -464,8 +464,6 @@ def _create_blob_inspection(
     ):
         inspection_metadata.duration = video_duration
 
-    assert isinstance(task.inspection_id, str)
-
     return inspection_type(
         metadata=inspection_metadata, id=task.inspection_id, data=file_bytes
     )
