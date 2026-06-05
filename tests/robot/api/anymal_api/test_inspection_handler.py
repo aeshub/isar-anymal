@@ -8,9 +8,13 @@ from requests import Response
 
 from isar_anymal.robot.api.anymal_api.models import InspectionEventDto
 from isar_anymal.robot.api.anymal_api.server_sent_event_handlers.inspection_handler import (
+    _fetch_blob_via_data_navigator,
     _process_acoustic_inspection,
 )
 from isar_anymal.robot.api.request_handler import RequestHandler
+from robot_interface.models.exceptions.robot_exceptions import (
+    RobotRetrieveInspectionException,
+)
 from robot_interface.models.inspection.inspection import AcousticMeasurement
 
 from tests.robot.utilities import build_acoustic_task, default_robot_pose
@@ -46,3 +50,29 @@ def test_process_acoustic_inspection(mocker: MockerFixture) -> None:
     assert inspection.metadata.leak_rate == pytest.approx(0.5505, rel=1e-3)
     assert inspection.metadata.result == "RI_ANOMALY"
     assert inspection.metadata.frequency_from == 35000
+
+
+def test_fetch_blob_raises_on_zero_items() -> None:
+    listing_response: Mock = Mock(spec=Response)
+    listing_response.json.return_value = {"totalItems": 0, "items": []}
+
+    request_handler: Mock = Mock(spec=RequestHandler)
+    request_handler.get = Mock(return_value=listing_response)
+
+    with pytest.raises(RobotRetrieveInspectionException):
+        _fetch_blob_via_data_navigator(
+            task_run_uid="task-1", request_handler=request_handler
+        )
+
+
+def test_fetch_blob_raises_on_malformed_item() -> None:
+    listing_response: Mock = Mock(spec=Response)
+    listing_response.json.return_value = {"totalItems": 1, "items": [{}]}
+
+    request_handler: Mock = Mock(spec=RequestHandler)
+    request_handler.get = Mock(return_value=listing_response)
+
+    with pytest.raises(RobotRetrieveInspectionException):
+        _fetch_blob_via_data_navigator(
+            task_run_uid="task-1", request_handler=request_handler
+        )
