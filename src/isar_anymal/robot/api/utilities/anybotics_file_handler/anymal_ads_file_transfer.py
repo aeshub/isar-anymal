@@ -258,6 +258,7 @@ class ANYmalADSFileTransfer:
                 this_inspection["detection_type"] = poi["detection_type"]
                 this_inspection["frequency_from"] = poi["frequency_from"]
                 this_inspection["frequency_to"] = poi["frequency_to"]
+                this_inspection["roi"] = poi["roi"]
                 this_inspection["snr_value_threshold"] = poi["snr_value_threshold"]
 
             adhoc_environment["objects"].append(this_inspection)
