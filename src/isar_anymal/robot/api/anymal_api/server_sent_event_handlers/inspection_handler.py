@@ -244,41 +244,9 @@ def _process_inspection_blob(
     if event.measurement.type == InspectionMeasurementType.IMT_VISUAL:
         metadata_type = ImageMetadata
         inspection_type = Image
-        inspection_response: Response = request_handler.get(
-            url=f"{settings.SERVER_URL}/data-navigator-api/inspections?taskRunId={event.task_run_uid}"
+        file_bytes, file_type = _fetch_blob_via_data_navigator(
+            task_run_uid=event.task_run_uid, request_handler=request_handler
         )
-        inspection_response_json = inspection_response.json()
-
-        if inspection_response_json["totalItems"] != 1:
-            logger.error("Received more items then expected")
-
-        file_name = inspection_response_json["items"][0]["inspection"]["filename"]
-        # time.sleep(30)  # allow some time for file uploading from robot to happen
-        max_retries: int = 30
-        attempt_number: int = 0
-        file_response: Optional[Response] = None
-        while attempt_number < max_retries:
-            try:
-                file_response = request_handler.get(
-                    url=f"{settings.SERVER_URL}/data-navigator-api/inspections/raw-data/{file_name}"
-                )
-            except RequestException:
-                attempt_number += 1
-                logger.warning(
-                    f"Failed to retrieve file on attempt {attempt_number} of {max_retries}"
-                )
-                time.sleep(1)
-                continue
-
-            break
-
-        if file_response is None:
-            error_description: str = f"Could not collect file with name {file_name}."
-            logger.error(error_description)
-            raise RobotRetrieveInspectionException(error_description)
-
-        file_bytes = file_response.content
-        file_type = file_response.headers["content-type"].split("/")[-1]
 
     # elif event.measurement.type == InspectionMeasurementType.IMT_VIDEO:
     #     metadata_type = VideoMetadata
@@ -319,6 +287,44 @@ def _process_inspection_blob(
         )
 
     return file_bytes, metadata_type, file_type, inspection_type, video_duration
+
+
+def _fetch_blob_via_data_navigator(
+    task_run_uid: str, request_handler: RequestHandler
+) -> Tuple[bytes, str]:
+    inspection_response: Response = request_handler.get(
+        url=f"{settings.SERVER_URL}/data-navigator-api/inspections?taskRunId={task_run_uid}"
+    )
+    inspection_response_json = inspection_response.json()
+
+    if inspection_response_json["totalItems"] != 1:
+        logger.error("Received more items then expected")
+
+    file_name = inspection_response_json["items"][0]["inspection"]["filename"]
+    max_retries: int = 30
+    attempt_number: int = 0
+    file_response: Optional[Response] = None
+    while attempt_number < max_retries:
+        try:
+            file_response = request_handler.get(
+                url=f"{settings.SERVER_URL}/data-navigator-api/inspections/raw-data/{file_name}"
+            )
+        except RequestException:
+            attempt_number += 1
+            logger.warning(
+                f"Failed to retrieve file on attempt {attempt_number} of {max_retries}"
+            )
+            time.sleep(1)
+            continue
+
+        break
+
+    if file_response is None:
+        error_description: str = f"Could not collect file with name {file_name}."
+        logger.error(error_description)
+        raise RobotRetrieveInspectionException(error_description)
+
+    return file_response.content, file_response.headers["content-type"].split("/")[-1]
 
 
 def _extract_target_position(task: TASKS, robot_pose: Pose) -> Position:
