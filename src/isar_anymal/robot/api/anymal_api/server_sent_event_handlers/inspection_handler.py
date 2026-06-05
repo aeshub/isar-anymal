@@ -24,10 +24,15 @@ from robot_interface.models.inspection.inspection import (
     AudioMetadata,
 )
 
-from isar_anymal.robot.api.anymal_api.enums import InspectionMeasurementType
+from isar_anymal.robot.api.anymal_api.enums import (
+    InspectionInterpretationType,
+    InspectionMeasurementType,
+)
 from isar_anymal.robot.api.anymal_api.models import (
     ConcentrationMeasurementDto,
     InspectionEventDto,
+    LeakDetectionInterpretationDto,
+    VideoMeasurementDto,
 )
 from isar_anymal.robot.api.anymal_api.server_sent_event_handlers.utilities import (
     import_transform_from_map_file,
@@ -147,7 +152,17 @@ def _process_inspection_event(
     inspection_type: Type[Inspection]
 
     try:
-        if _is_blob_inspection(event):
+        if _is_acoustic_inspection(event):
+            inspection_type = AcousticMeasurement
+            inspection = _process_acoustic_inspection(
+                event=event,
+                request_handler=request_handler,
+                robot_pose=robot_pose,
+                target_position=target_position,
+                task=task,
+            )
+
+        elif _is_blob_inspection(event):
             (
                 file_bytes,
                 metadata_type,
@@ -267,20 +282,6 @@ def _process_inspection_blob(
     #     file_type = "mp3"
     #     # We can also gather the sampling rate, depth and number of channels from the audio metadata
 
-    elif event.measurement.type == InspectionMeasurementType.IMT_ACOUSTIC_IMAGE:
-        # TODO(acoustic): implement IMT_ACOUSTIC_IMAGE blob retrieval.
-        # We do not yet know the SSE event shape for acoustic imaging from
-        # ANYbotics; a live IMT_ACOUSTIC_IMAGE capture is needed to confirm
-        # whether the blob is delivered inline on event.measurement.data
-        # (per AcousticImageMeasurementDto.acousticImage.image.data) or
-        # retrieved via the /data-navigator-api/inspections/raw-data
-        # endpoint as IMT_VISUAL does.
-        metadata_type = AcousticMeasurementMetadata
-        inspection_type = AcousticMeasurement
-        raise NotImplementedError(
-            "IMT_ACOUSTIC_IMAGE blob retrieval is not yet implemented"
-        )
-
     else:
         raise RobotRetrieveInspectionException(
             f"Unsupported inspection blob type {event.measurement.type} received"
@@ -327,6 +328,62 @@ def _fetch_blob_via_data_navigator(
     return file_response.content, file_response.headers["content-type"].split("/")[-1]
 
 
+def _process_acoustic_inspection(
+    event: InspectionEventDto,
+    request_handler: RequestHandler,
+    robot_pose: Pose,
+    target_position: Position,
+    task: TASKS,
+) -> AcousticMeasurement:
+    video_data: VideoMeasurementDto = VideoMeasurementDto.model_validate(
+        event.measurement.data
+    )
+
+    leak_data: Optional[LeakDetectionInterpretationDto] = None
+    for interpretation in event.interpretations:
+        if (
+            interpretation.type == InspectionInterpretationType.IIT_LEAK_DETECTION
+            and interpretation.data is not None
+        ):
+            leak_data = LeakDetectionInterpretationDto.model_validate(
+                interpretation.data
+            )
+            break
+
+    if leak_data is None:
+        raise RobotRetrieveInspectionException(
+            f"Acoustic inspection event for asset {event.asset_id} is missing IIT_LEAK_DETECTION data"
+        )
+
+    file_bytes, file_type = _fetch_blob_via_data_navigator(
+        task_run_uid=event.task_run_uid, request_handler=request_handler
+    )
+
+    metadata = AcousticMeasurementMetadata(
+        start_time=datetime.now(),
+        robot_pose=robot_pose,
+        target_position=target_position,
+        file_type=file_type,
+        duration=video_data.duration,
+        snr_value=leak_data.snr_value,
+        leak_rate=leak_data.leak_rate,
+        leak_rate_unit=leak_data.leak_rate_unit,
+        sound_pressure_level_at_sensor_db=leak_data.sound_pressure_level_at_sensor_in_db,
+        sound_pressure_level_at_source_db=leak_data.sound_pressure_level_at_source,
+        distance_to_source=leak_data.distance_to_source,
+        result=leak_data.result.value,
+        frequency_from=leak_data.thumbnail_acoustic_image.frequency_range.min,
+        frequency_to=leak_data.thumbnail_acoustic_image.frequency_range.max,
+    )
+    metadata.tag_id = task.tag_id
+    metadata.inspection_description = task.inspection_description
+    metadata.analysis_types = task.analysis_types
+
+    return AcousticMeasurement(
+        metadata=metadata, id=task.inspection_id, data=file_bytes
+    )
+
+
 def _extract_target_position(task: TASKS, robot_pose: Pose) -> Position:
     try:
         target_position: Position = task.target
@@ -359,13 +416,21 @@ def _extract_robot_pose(event, transform: Transform) -> Pose:
     return robot_pose
 
 
+def _is_acoustic_inspection(event) -> bool:
+    if event.measurement.type != InspectionMeasurementType.IMT_VIDEO:
+        return False
+    return any(
+        interpretation.type == InspectionInterpretationType.IIT_LEAK_DETECTION
+        for interpretation in event.interpretations
+    )
+
+
 def _is_blob_inspection(event) -> bool:
     return (
         event.measurement.type == InspectionMeasurementType.IMT_VISUAL
         or event.measurement.type == InspectionMeasurementType.IMT_VIDEO
         or event.measurement.type == InspectionMeasurementType.IMT_AUDITIVE
         or event.measurement.type == InspectionMeasurementType.IMT_THERMAL
-        or event.measurement.type == InspectionMeasurementType.IMT_ACOUSTIC_IMAGE
     )
 
 
