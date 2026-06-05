@@ -54,6 +54,7 @@ from isar_anymal.robot.api.request_handler import RequestHandler
 from isar_anymal.robot.api.utilities.anybotics_file_handler.anymal_ads_file_transfer import (
     ANYmalADSFileTransfer,
 )
+from isar_anymal.robot.api.utilities.acoustic_roi import resolve_acoustic_roi
 
 from isar_anymal.robot.api.anymal_api.api import ANYmalAPI
 from isar_anymal.robot.api.anymal_api.models import ControlMissionResponseDto
@@ -186,6 +187,11 @@ class API:
                 "frequency_from": getattr(task, "frequency_from", None),
                 "frequency_to": getattr(task, "frequency_to", None),
                 "snr_value_threshold": getattr(task, "snr_value_threshold", None),
+                "roi": (
+                    resolve_acoustic_roi(task.roi)
+                    if task.type == TaskTypes.TakeAcousticMeasurement
+                    else None
+                ),
             },
             "poo": {
                 "pos": {

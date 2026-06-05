@@ -16,6 +16,7 @@ from isar_anymal.robot.api.anymal_api.models import (
     TaskProgressDto,
 )
 from isar_anymal.robot.api.api import API
+from isar_anymal.robot.api.utilities.acoustic_roi import DEFAULT_ACOUSTIC_ROI
 from isar_anymal.robot.api.mission_status_handler import MissionStatusHandler
 from isar_anymal.robot.api.anymal_api.server_sent_event_handlers.inspection_handler import (
     _create_blob_inspection,
@@ -23,14 +24,13 @@ from isar_anymal.robot.api.anymal_api.server_sent_event_handlers.inspection_hand
 from pytest_mock import MockerFixture
 from robot_interface.models.inspection.inspection import Image, ImageMetadata
 from robot_interface.models.mission.status import MissionStatus, RobotStatus, TaskStatus
-from robot_interface.models.mission.task import (
-    AcousticDetectionType,
-    TakeAcousticMeasurement,
-    TakeImage,
-)
+from robot_interface.models.mission.task import Roi, TakeImage
 from robot_interface.models.robots.battery_state import BatteryState
 
-from tests.robot.utilities import default_robot_pose, mock_subscribe_callback_functions
+from tests.robot.utilities import (
+    build_acoustic_task,
+    mock_subscribe_callback_functions,
+)
 
 
 def test_create_inspection() -> None:
@@ -55,31 +55,16 @@ def test_create_inspection() -> None:
 
 
 def test_extract_task_type_acoustic() -> None:
-    task = TakeAcousticMeasurement(
-        target=Position(x=1, y=1, z=1, frame=Frame("asset")),
-        robot_pose=default_robot_pose(),
-        frequency_from=1000.0,
-        frequency_to=2000.0,
-        snr_value_threshold=3.0,
-        detection_type=AcousticDetectionType.leak,
-    )
+    task = build_acoustic_task()
 
     assert API.extract_task_type(task) == "acoustic"
 
 
 def test_create_inspection_includes_acoustic_fields() -> None:
-    robot_pose = default_robot_pose()
-    task = TakeAcousticMeasurement(
-        target=Position(x=1, y=1, z=1, frame=Frame("asset")),
-        robot_pose=robot_pose,
-        frequency_from=1000.0,
-        frequency_to=2000.0,
-        snr_value_threshold=3.0,
-        detection_type=AcousticDetectionType.leak,
-    )
+    task = build_acoustic_task()
 
     poi = API.create_inspection(
-        pose=robot_pose,
+        pose=task.robot_pose,
         target_position=task.target,
         task=task,
         task_type="acoustic",
@@ -89,6 +74,46 @@ def test_create_inspection_includes_acoustic_fields() -> None:
     assert poi["frequency_from"] == 1000.0
     assert poi["frequency_to"] == 2000.0
     assert poi["snr_value_threshold"] == 3.0
+
+
+def test_acoustic_poi_uses_provided_roi_when_in_bounds() -> None:
+    task = build_acoustic_task(roi=Roi(x=1000, y=2000, width=500, height=500))
+
+    poi = API.create_inspection(
+        pose=task.robot_pose,
+        target_position=task.target,
+        task=task,
+        task_type="acoustic",
+    )["poi"]
+
+    assert poi["roi"] == {"x": 1000, "y": 2000, "width": 500, "height": 500}
+
+
+def test_acoustic_poi_falls_back_to_default_when_roi_is_none() -> None:
+    task = build_acoustic_task(roi=None)
+
+    poi = API.create_inspection(
+        pose=task.robot_pose,
+        target_position=task.target,
+        task=task,
+        task_type="acoustic",
+    )["poi"]
+
+    assert poi["roi"] == DEFAULT_ACOUSTIC_ROI
+
+
+def test_acoustic_poi_falls_back_to_default_when_roi_out_of_bounds() -> None:
+    # x=10 is below the envelope minimum (x_min=968).
+    task = build_acoustic_task(roi=Roi(x=10, y=2000, width=100, height=100))
+
+    poi = API.create_inspection(
+        pose=task.robot_pose,
+        target_position=task.target,
+        task=task,
+        task_type="acoustic",
+    )["poi"]
+
+    assert poi["roi"] == DEFAULT_ACOUSTIC_ROI
 
 
 def test_create_inspection_forwards_analysis_types() -> None:

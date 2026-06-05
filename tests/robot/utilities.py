@@ -25,6 +25,11 @@ from isar_anymal.robot.api.mission_status_handler import MissionStatusHandler
 from isar_anymal.robot.api.utilities.anybotics_file_handler.anymal_ads_file_transfer import (
     ANYmalADSFileTransfer,
 )
+from robot_interface.models.mission.task import (
+    AcousticDetectionType,
+    Roi,
+    TakeAcousticMeasurement,
+)
 
 
 def _mock_response_object(
@@ -43,6 +48,18 @@ def default_robot_pose() -> Pose:
         position=Position(1, 2, 3, frame=Frame("asset")),
         orientation=Orientation(0, 0, 0, 1, frame=Frame("asset")),
         frame=Frame("asset"),
+    )
+
+
+def build_acoustic_task(roi: Roi | None = None) -> TakeAcousticMeasurement:
+    return TakeAcousticMeasurement(
+        target=Position(x=1, y=1, z=1, frame=Frame("asset")),
+        robot_pose=default_robot_pose(),
+        frequency_from=1000.0,
+        frequency_to=2000.0,
+        snr_value_threshold=3.0,
+        detection_type=AcousticDetectionType.leak,
+        roi=roi,
     )
 
 
