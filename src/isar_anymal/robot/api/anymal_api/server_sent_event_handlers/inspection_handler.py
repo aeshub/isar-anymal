@@ -297,11 +297,24 @@ def _fetch_blob_via_data_navigator(
         url=f"{settings.SERVER_URL}/data-navigator-api/inspections?taskRunId={task_run_uid}"
     )
     inspection_response_json = inspection_response.json()
+    total_items: int = inspection_response_json.get("totalItems", 0)
+    items = inspection_response_json.get("items") or []
 
-    if inspection_response_json["totalItems"] != 1:
-        logger.error("Received more items then expected")
+    if total_items < 1 or not items:
+        raise RobotRetrieveInspectionException(
+            f"Data-navigator returned no inspection items for "
+            f"taskRunId={task_run_uid}"
+        )
+    if total_items > 1:
+        logger.warning("Data-navigator returned %d items; using the first", total_items)
 
-    file_name = inspection_response_json["items"][0]["inspection"]["filename"]
+    try:
+        file_name = items[0]["inspection"]["filename"]
+    except (KeyError, TypeError) as exc:
+        raise RobotRetrieveInspectionException(
+            f"Data-navigator response missing inspection filename for "
+            f"taskRunId={task_run_uid}"
+        ) from exc
     max_retries: int = 30
     attempt_number: int = 0
     file_response: Optional[Response] = None
