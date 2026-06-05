@@ -114,6 +114,11 @@ pose:
             y: 0
             z: 0
 power_ratio: 0.0
+roi:
+    height: "[roi_height]"
+    width: "[roi_width]"
+    x: "[roi_x]"
+    y: "[roi_y]"
 snr_value_threshold: "[snr_value_threshold]"
 type: acoustic_imaging""",
     Loader=yaml.FullLoader,
