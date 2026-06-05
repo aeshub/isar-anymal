@@ -6,7 +6,12 @@ from robot_interface.models.mission.task import Roi
 logger = logging.getLogger(__name__)
 
 
-# Default ROI and validation envelope, in native acoustic-camera pixel coordinates.
+# Default ROI for acoustic-imaging inspections. The pixel coordinates and
+# extents come from an example acoustic video returned by the data-navigator
+# API; the robot expects request ROIs to fall within the same rectangle
+# (x in [968, 2905], y in [1513, 4539]). DEFAULT_ACOUSTIC_ROI doubles as the
+# validation envelope in resolve_acoustic_roi: out-of-bounds ROIs are replaced
+# with this default rather than rejected.
 DEFAULT_ACOUSTIC_ROI: Dict[str, int] = {
     "x": 968,
     "y": 1513,
