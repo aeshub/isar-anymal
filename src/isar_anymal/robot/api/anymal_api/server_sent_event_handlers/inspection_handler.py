@@ -198,6 +198,10 @@ def _process_inspection_event(
                 robot_pose=robot_pose,
                 target_position=target_position,
             )
+        else:
+            raise RobotRetrieveInspectionException(
+                f"Unsupported inspection event type {event.measurement.type} received"
+            )
     except RobotRetrieveInspectionException as e:
         logger.warning(
             f"Unknown callback event for asset {event.asset_id}. {e.error_description}"
