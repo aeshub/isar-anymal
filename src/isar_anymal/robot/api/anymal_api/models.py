@@ -225,7 +225,9 @@ class ConcentrationSensorPropertiesDto(BaseModel):
     measurement_range: FloatRangeDto | None = Field(
         alias="measurementRange", default=None
     )
-    low_thresholds: ConcentrationThresholdsDto = Field(alias="lowThresholds")
+    low_thresholds: ConcentrationThresholdsDto | None = Field(
+        alias="lowThresholds", default=None
+    )
     high_thresholds: ConcentrationThresholdsDto = Field(alias="highThresholds")
 
 
